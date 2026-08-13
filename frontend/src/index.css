@@ -1,0 +1,18 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg: #0b0f17;
+  --card: rgba(255,255,255,0.04);
+  --accent: #6ee7b7;
+}
+
+html, body, #root { height: 100%; }
+body { background: linear-gradient(180deg,#05060a 0%, #0b0f17 100%); color: #e6eef8; }
+
+.glass {
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+  backdrop-filter: blur(8px);
+  border-radius: 12px;
+}

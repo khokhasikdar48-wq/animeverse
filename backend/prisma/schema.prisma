@@ -1,0 +1,77 @@
+// Prisma schema for AnimeVerse
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String?
+  name         String?
+  isAdmin      Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  Watchlist    Watchlist[]
+  WatchHistory WatchHistory[]
+}
+
+model Genre {
+  id    Int    @id @default(autoincrement())
+  name  String @unique
+  slug  String @unique
+  anime Anime[] @relation("AnimeGenres")
+}
+
+model Anime {
+  id            String     @id @default(uuid())
+  title         String
+  slug          String     @unique
+  description   String?
+  year          Int?
+  status        String?
+  rating        Float?
+  totalEpisodes Int       @default(0)
+  posterUrl     String?
+  coverUrl      String?
+  createdAt     DateTime  @default(now())
+  genres        Genre[]   @relation("AnimeGenres")
+  episodes      Episode[]
+}
+
+model Episode {
+  id           String   @id @default(uuid())
+  animeId      String
+  anime        Anime    @relation(fields: [animeId], references: [id], onDelete: Cascade)
+  title        String
+  episodeNumber Int
+  description  String?
+  videoUrl     String
+  qualityOptions Json?
+  duration     Int?
+  createdAt    DateTime @default(now())
+}
+
+model Watchlist {
+  user   User  @relation(fields:[userId], references:[id], onDelete: Cascade)
+  userId String
+  anime  Anime @relation(fields:[animeId], references:[id], onDelete: Cascade)
+  animeId String
+  addedAt DateTime @default(now())
+
+  @@id([userId, animeId])
+}
+
+model WatchHistory {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields:[userId], references:[id], onDelete: Cascade)
+  userId    String
+  episode   Episode  @relation(fields:[episodeId], references:[id], onDelete: Cascade)
+  episodeId String
+  position  Int      @default(0)
+  watchedAt DateTime @default(now())
+}
