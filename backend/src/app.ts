@@ -2,6 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import helmet from 'helmet'
 import cookieParser from 'cookie-parser'
+import path from 'path'
 
 import authRoutes from './routes/auth'
 import animeRoutes from './routes/anime'
@@ -15,6 +16,10 @@ app.use(helmet())
 app.use(cors({origin: process.env.FRONTEND_URL || 'http://localhost:3000', credentials: true}))
 app.use(cookieParser())
 app.use(express.json())
+
+// serve uploaded files (mock)
+const uploadsPath = path.join(__dirname, '..', 'uploads')
+app.use('/uploads', express.static(uploadsPath))
 
 app.use('/api/auth', authRoutes)
 app.use('/api/anime', animeRoutes)

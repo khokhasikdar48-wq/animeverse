@@ -5,4 +5,21 @@ const api = axios.create({
   withCredentials: true
 })
 
+let accessToken: string | null = localStorage.getItem('av_access') || null
+
+export function setAccessToken(token: string | null){
+  accessToken = token
+  if(token){
+    localStorage.setItem('av_access', token)
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`
+  }else{
+    localStorage.removeItem('av_access')
+    delete api.defaults.headers.common['Authorization']
+  }
+}
+
+if(accessToken){
+  api.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`
+}
+
 export default api
