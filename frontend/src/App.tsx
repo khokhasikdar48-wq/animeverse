@@ -11,6 +11,10 @@ import Account from './pages/Account'
 import AdminDashboard from './pages/Admin/Dashboard'
 import NavBar from './components/NavBar'
 import BottomNav from './components/BottomNav'
+import InviteAccept from './pages/InviteAccept'
+import AdminAnimeList from './pages/Admin/AnimeList'
+import AdminAnimeForm from './pages/Admin/AnimeForm'
+import AdminEpisodes from './pages/Admin/Episodes'
 
 export default function App() {
   return (
@@ -26,8 +30,13 @@ export default function App() {
             <Route path="/watchlist" element={<Watchlist />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/invite-accept" element={<InviteAccept />} />
             <Route path="/account" element={<Account />} />
-            <Route path="/admin/*" element={<AdminDashboard />} />
+            <Route path="/admin" element={<AdminDashboard />} />
+            <Route path="/admin/anime" element={<AdminAnimeList />} />
+            <Route path="/admin/anime/new" element={<AdminAnimeForm />} />
+            <Route path="/admin/anime/:id/edit" element={<AdminAnimeForm />} />
+            <Route path="/admin/anime/:id/episodes" element={<AdminEpisodes />} />
           </Routes>
         </main>
       </div>
