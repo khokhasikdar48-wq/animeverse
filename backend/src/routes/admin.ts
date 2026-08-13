@@ -12,6 +12,10 @@ const router = Router()
 const uploadsDir = path.join(__dirname, '..', '..', 'uploads')
 if(!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
 
+const MAX_VIDEO_MB = Number(process.env.MAX_VIDEO_MB || '1024') // 1GB default
+const MAX_IMAGE_MB = Number(process.env.MAX_IMAGE_MB || '10') // 10MB default
+const MAX_UPLOAD_BYTES = Number(process.env.MAX_UPLOAD_BYTES || String(1024 * 1024 * 1024)) // 1GB
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, uploadsDir)
@@ -21,7 +25,8 @@ const storage = multer.diskStorage({
     cb(null, safeName)
   }
 })
-const upload = multer({ storage })
+
+const upload = multer({ storage, limits: { fileSize: MAX_UPLOAD_BYTES } })
 
 // Return a signed-url placeholder or real signed url when AWS creds provided
 router.post('/uploads/signed-url', authMiddleware, adminMiddleware, async (req,res)=>{
@@ -43,31 +48,65 @@ router.post('/uploads/signed-url', authMiddleware, adminMiddleware, async (req,r
 
 // Mock upload endpoint: accepts multipart and returns fileUrl, optionally link to anime/episode
 router.post('/uploads/mock', authMiddleware, adminMiddleware, upload.single('file'), async (req,res)=>{
-  if(!req.file) return res.status(400).json({message:'file required'})
-  const targetType = req.body.targetType // 'anime_poster' | 'anime_cover' | 'episode_video' | 'episode_poster'
-  const targetId = req.body.targetId
-
-  // Build public url to the uploaded file (served by express static /uploads)
-  const fileUrl = `/uploads/${req.file.filename}`
-
   try{
-    if(targetType && targetId){
-      if(targetType === 'anime_poster'){
-        await prisma.anime.update({ where:{ id: targetId }, data:{ posterUrl: fileUrl }})
-      }else if(targetType === 'anime_cover'){
-        await prisma.anime.update({ where:{ id: targetId }, data:{ coverUrl: fileUrl }})
-      }else if(targetType === 'episode_video'){
-        await prisma.episode.update({ where:{ id: targetId }, data:{ videoUrl: fileUrl }})
-      }else if(targetType === 'episode_poster'){
-        await prisma.episode.update({ where:{ id: targetId }, data:{ /* no poster on episode model yet */ }})
-      }
-    }
-  }catch(err){
-    // ignore linking errors for now
-    console.error('Linking upload failed', err)
-  }
+    if(!req.file) return res.status(400).json({message:'file required'})
+    const targetType = req.body.targetType // 'anime_poster' | 'anime_cover' | 'episode_video' | 'episode_poster'
+    const targetId = req.body.targetId
 
-  return res.json({ fileUrl })
+    // Build public url to the uploaded file (served by express static /uploads)
+    const fileUrl = `/uploads/${req.file.filename}`
+
+    // Validate file size and type after writing to disk
+    const stats = fs.statSync(req.file.path)
+    const sizeMB = stats.size / (1024 * 1024)
+    const mime = req.file.mimetype || ''
+
+    // Determine allowed limits
+    let allowedMB = MAX_IMAGE_MB
+    if(mime.startsWith('video/') || targetType === 'episode_video') allowedMB = MAX_VIDEO_MB
+
+    if(sizeMB > allowedMB){
+      // remove the uploaded file
+      fs.unlinkSync(req.file.path)
+      return res.status(413).json({ message: `File too large. Max allowed for this type is ${allowedMB} MB` })
+    }
+
+    // Validate mime types
+    if(targetType && targetType.startsWith('anime') && !mime.startsWith('image/')){
+      // Poster/cover should be images
+      fs.unlinkSync(req.file.path)
+      return res.status(400).json({ message: 'Poster/cover must be an image (png/jpg/webp)' })
+    }
+    if(targetType === 'episode_video' && !mime.startsWith('video/')){
+      fs.unlinkSync(req.file.path)
+      return res.status(400).json({ message: 'Episode file must be a video' })
+    }
+
+    try{
+      if(targetType && targetId){
+        if(targetType === 'anime_poster'){
+          await prisma.anime.update({ where:{ id: targetId }, data:{ posterUrl: fileUrl }})
+        }else if(targetType === 'anime_cover'){
+          await prisma.anime.update({ where:{ id: targetId }, data:{ coverUrl: fileUrl }})
+        }else if(targetType === 'episode_video'){
+          await prisma.episode.update({ where:{ id: targetId }, data:{ videoUrl: fileUrl }})
+        }else if(targetType === 'episode_poster'){
+          // episode poster not implemented on model yet
+        }
+      }
+    }catch(err){
+      console.error('Linking upload failed', err)
+      // proceed but still return fileUrl
+    }
+
+    return res.json({ fileUrl })
+  }catch(err:any){
+    if(err.code === 'LIMIT_FILE_SIZE'){
+      return res.status(413).json({ message: 'File too large' })
+    }
+    console.error(err)
+    return res.status(500).json({ message: 'Upload failed' })
+  }
 })
 
 // Admin CRUD: Anime

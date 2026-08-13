@@ -35,7 +35,7 @@ export async function updateEpisode(id:string, data:any){
   return res.data.episode
 }
 
-export async function getSignedUpload(filename:string){
-  const res = await api.post('/admin/uploads/signed-url', { filename })
+export async function getSignedUpload(filename:string, targetType?:string, targetId?:string){
+  const res = await api.post('/admin/uploads/signed-url', { filename, targetType, targetId })
   return res.data
 }
