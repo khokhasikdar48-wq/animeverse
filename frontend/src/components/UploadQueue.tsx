@@ -2,62 +2,54 @@
 *** Begin Patch
 *** Update File: frontend/src/components/UploadQueue.tsx
 @@
- import api from '../services/api'
- import axios from 'axios'
-+import EpisodeCreatorModal from './EpisodeCreatorModal'
-@@
- export default function UploadQueue({ initial=[] as File[], targetType='episode_video', targetId='' }: { initial?: File[]; targetType?: string; targetId?: string | null }){
-@@
-   const controllers = useRef<Record<string, AbortController>>({})
-+  const [creatorOpenFor, setCreatorOpenFor] = React.useState<string | null>(null)
+-      // If uploadUrl is a local mock path (starts with /), post multipart to server mock endpoint
+-      if(uploadUrl && uploadUrl.startsWith('/')){
++      // Record any returned s3/multipart info on the item for potential aborts
++      setItems(s=>s.map(it=> it.id===item.id ? { ...it, s3info: signedRes.data } : it))
++
++      // If uploadUrl is a local mock path (starts with /), post multipart to server mock endpoint
++      if(uploadUrl && uploadUrl.startsWith('/')){
+         const form = new FormData()
+         form.append('file', item.file)
+         if(item.targetType) form.append('targetType', item.targetType)
+         if(item.targetId) form.append('targetId', item.targetId)
+         await axios.post(uploadUrl, form, { headers: { 'Content-Type': 'multipart/form-data' }, signal: controller.signal, onUploadProgress: (ev)=>{
+           const pct = ev.total ? Math.round((ev.loaded/ev.total)*100) : 0
+           setItems(s=>s.map(it=> it.id===item.id ? { ...it, progress: pct } : it))
+         }})
+       } else {
+         // PUT to presigned URL (S3) — use axios to get progress events
+         await axios.put(uploadUrl, item.file, { headers: { 'Content-Type': item.file.type || 'application/octet-stream' }, signal: controller.signal, onUploadProgress: (ev)=>{
+           const pct = ev.total ? Math.round((ev.loaded/ev.total)*100) : 0
+           setItems(s=>s.map(it=> it.id===item.id ? { ...it, progress: pct } : it))
+         }})
+         // After PUT, client should notify back to server if needed. If signed-url endpoint returned key etc, instruct server to ingest.
+-        if(signedRes.data.key){
+-          try{ await api.post('/admin/uploads/notify', { key: signedRes.data.key, targetType: item.targetType, targetId: item.targetId }) }catch(e){ console.warn('notify failed', e) }
++        if(signedRes.data.key){
++          try{
++            const payload:any = { key: signedRes.data.key, targetType: item.targetType, targetId: item.targetId }
++            // include metadata if present
++            if((item as any).metaTitle || (item as any).metaDescription){
++              payload.metadata = { title: (item as any).metaTitle, description: (item as any).metaDescription }
++            }
++            await api.post('/admin/uploads/notify', payload)
++          }catch(e){ console.warn('notify failed', e) }
+         }
+       }
 @@
    function cancelUpload(id:string){
-@@
+-    const ctl = controllers.current[id]
+-    if(ctl) ctl.abort()
+-    setItems(s=>s.map(it=> it.id===id ? { ...it, status:'canceled', error:'Canceled by user' } : it))
++    const ctl = controllers.current[id]
++    // if the item has multipart info, call server to abort multipart upload
++    const item = items.find(i=>i.id===id)
++    if(item && (item as any).s3info && (item as any).s3info.uploadId){
++      const s3 = (item as any).s3info
++      api.post('/admin/uploads/abort-multipart', { bucket: s3.bucket || s3.Bucket, key: s3.key || s3.Key || s3.objectKey || s3['key'], uploadId: s3.uploadId || s3.UploadId }).catch(e=> console.warn('abort-multipart failed', e))
++    }
++    if(ctl) ctl.abort()
++    setItems(s=>s.map(it=> it.id===id ? { ...it, status:'canceled', error:'Canceled by user' } : it))
    }
- 
-   function retryUpload(id:string){
-@@
-   }
-+
-+  function openCreatorForItem(id:string){
-+    setCreatorOpenFor(id)
-+  }
-+
-+  function closeCreator(){ setCreatorOpenFor(null) }
-+
-+  async function onEpisodeCreatedForItem(itemId:string, episode:any){
-+    // assign the created episode id to the upload item
-+    setItems(s=>s.map(it=> it.id===itemId ? { ...it, targetId: episode.id } : it))
-+    closeCreator()
-+  }
-@@
-         {items.map(it=> (
-           <div key={it.id} className="p-3 bg-white/5 rounded flex items-center justify-between">
-             <div className="flex-1">
-               <div className="font-semibold">{it.file.name}</div>
--              <div className="text-sm text-gray-400">{it.progress}% — {it.status}{it.error ? ` — ${it.error}`:''}</div>
-+              <div className="text-sm text-gray-400">{it.progress}% — {it.status}{it.error ? ` — ${it.error}`:''}</div>
-+              <div className="text-xs mt-1 text-gray-300">Target episode: {it.targetId || '(not set)'}</div>
-+              <div className="mt-2">
-+                <input placeholder="Per-upload title (optional)" className="p-1 text-sm border w-full" value={(it as any).metaTitle||''} onChange={e=> setItems(s=>s.map(x=> x.id===it.id ? { ...x, metaTitle: e.target.value } : x))} />
-+                <input placeholder="Per-upload description (optional)" className="p-1 text-sm border w-full mt-1" value={(it as any).metaDescription||''} onChange={e=> setItems(s=>s.map(x=> x.id===it.id ? { ...x, metaDescription: e.target.value } : x))} />
-+              </div>
-             <div className="w-full bg-black h-2 rounded mt-2 overflow-hidden">
-               <div style={{ width: `${it.progress}%` }} className="h-2 bg-green-400" />
-             </div>
-           </div>
--            <div className="ml-4 flex flex-col gap-2">
-+            <div className="ml-4 flex flex-col gap-2">
-               {it.status === 'uploading' && <button onClick={()=>cancelUpload(it.id)} className="px-2 py-1 bg-yellow-500 rounded">Cancel</button>}
-               {it.status === 'error' && <button onClick={()=>retryUpload(it.id)} className="px-2 py-1 bg-blue-500 rounded">Retry</button>}
-               {(it.status === 'success' || it.status === 'canceled' || it.status === 'error') && <button onClick={()=>removeItem(it.id)} className="px-2 py-1 bg-gray-600 rounded">Remove</button>}
-+              <button onClick={()=>openCreatorForItem(it.id)} className="px-2 py-1 bg-indigo-600 rounded text-white">Create Episode for this file</button>
-             </div>
-           </div>
-         ))}
-       </div>
-+      {creatorOpenFor && <EpisodeCreatorModal open={true} onClose={closeCreator} onCreated={(ep)=> onEpisodeCreatedForItem(creatorOpenFor, ep)} />}
-     </div>
-   )
- }
 *** End Patch
